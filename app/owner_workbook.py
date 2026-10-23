@@ -30,7 +30,9 @@ PAYLOAD_SHEET = "_metadata"
 LIST_SHEET = "_listas"
 HEADER_ROW = 3  # Índice zero: cabeçalho na linha 4 do Excel.
 DELETE_TOKEN = "[REMOVER]"
-VERSION = "metadata-reviewer-owner-v1"
+LEGACY_VERSION = "metadata-reviewer-owner-v1"
+VERSION = "metadata-reviewer-owner-v2"
+SUPPORTED_VERSIONS = frozenset((LEGACY_VERSION, VERSION))
 MAX_XLSX_BYTES = 30 * 1024 * 1024
 MAX_XML_BYTES = 160 * 1024 * 1024
 MAX_PAYLOAD_BYTES = engine.MAX_BATCH_BYTES * 4 // 3 + 1024 * 1024
@@ -430,7 +432,7 @@ def _payload(book):
         rows = ws.iter_rows(max_col=1, values_only=True)
         manifest = json.loads(next(rows)[0])
         length, count = manifest["length"], manifest["chunks"]
-        if (manifest["version"] != VERSION or manifest.get("encoding") != "zlib+base64"
+        if (manifest["version"] not in SUPPORTED_VERSIONS or manifest.get("encoding") != "zlib+base64"
                 or type(length) is not int or not 1 <= length <= MAX_PAYLOAD_BYTES
                 or type(count) is not int or not 1 <= count <= 4999
                 or ws.max_row != count + 1):
@@ -447,7 +449,7 @@ def _payload(book):
                 or decoder.unused_data or sha256(raw).hexdigest() != manifest["sha256"]):
             raise ValueError
         payload = json.loads(raw)
-        if payload["version"] != VERSION or not isinstance(payload["files"], list):
+        if payload["version"] != manifest["version"] or not isinstance(payload["files"], list):
             raise ValueError
         files = payload["files"]
         if any(not isinstance(f, dict) or set(f) != {"name", "content"} or
@@ -478,6 +480,7 @@ def read_owner_workbook(content: bytes) -> dict:
             if sheet.max_row > MAX_ROWS or sheet.max_column > MAX_COLUMNS:
                 raise ValueError("A planilha excede o limite de linhas ou colunas.")
         files = _payload(book)
+        source_version = json.loads(book[PAYLOAD_SHEET].cell(1, 1).value)["version"]
         batch = _source(files)
         tables = _tables(batch.nodes)
         edits, notes, warnings = [], [], []
@@ -512,7 +515,15 @@ def read_owner_workbook(content: bytes) -> dict:
                     raise ValueError(location + ": há conteúdo em colunas não previstas no modelo.")
                 for col, old in enumerate(record["values"]):
                     if col not in record["editable"] and values[col] != old:
-                        raise ValueError(location + ": nome técnico, origem ou valor atual alterado. Edite somente os campos amarelos e azuis.")
+                        # v1 was issued with both the short table label and the
+                        # qualified path. The stable ID, source hash and every
+                        # other immutable cell still have to match exactly.
+                        if (source_version == LEGACY_VERSION and name == "Colunas"
+                                and headers[col] == "Tabela / visão"
+                                and values[col] == record["node"]["path"].rsplit(".", 1)[0].rsplit(".", 1)[-1]):
+                            continue
+                        raise ValueError(location + f': campo protegido "{headers[col]}" ({cells[col].coordinate}) alterado. '
+                                         "Edite somente os campos amarelos e azuis.")
                 node = record["node"]
                 for col, (field, tag) in record["editable"].items():
                     cell, value = cells[col], values[col]

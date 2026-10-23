@@ -300,3 +300,39 @@ def test_building_and_reading_need_no_filesystem_or_temporary_files():
          patch("tempfile.mkstemp", side_effect=AssertionError("temporary")):
         raw = workbook()
         assert ow.read_owner_workbook(raw)["edits"] == []
+
+
+def legacy_workbook_short_labels():
+    with patch.object(ow, "VERSION", ow.LEGACY_VERSION):
+        raw = workbook()
+    return edit(raw, "Colunas", {"C5": "vendas", "C6": "vendas"})
+
+
+def test_legacy_short_table_label_preserves_owner_proposals():
+    raw = edit(legacy_workbook_short_labels(), "Colunas", {"G5": "Descrição revisada pelo Owner"})
+    result = ow.read_owner_workbook(raw)
+    assert result["files"] == [upload()]
+    assert len(result["edits"]) == 1
+    assert result["edits"][0]["value"] == "Descrição revisada pelo Owner"
+
+
+def test_legacy_qualified_table_label_is_still_accepted():
+    with patch.object(ow, "VERSION", ow.LEGACY_VERSION):
+        raw = workbook()
+    assert ow.read_owner_workbook(raw)["edits"] == []
+
+
+@pytest.mark.parametrize("header,value", [("Tabela / visão", "outra_tabela"),
+                                         ("SHA256 de origem", "hash_invalido"),
+                                         ("Coluna", "outra_coluna")])
+def test_legacy_compatibility_does_not_allow_identity_tampering(header, value):
+    raw = legacy_workbook_short_labels()
+    col = header_col(raw, "Colunas", header)
+    with pytest.raises(ValueError, match="alterado"):
+        ow.read_owner_workbook(edit(raw, "Colunas", {f"{col}5": value}))
+
+
+def test_v2_requires_the_qualified_table_label():
+    raw = edit(workbook(), "Colunas", {"C5": "vendas"})
+    with pytest.raises(ValueError, match="alterado"):
+        ow.read_owner_workbook(raw)

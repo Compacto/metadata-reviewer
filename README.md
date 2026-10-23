@@ -54,6 +54,8 @@ Essa aba evita alterações acidentais; **não é criptografia nem assinatura di
 
 Excels da versão anterior sem as origens incorporadas devem ser gerados novamente pela primeira aba. Não se reconstrói um contrato somente a partir das células visíveis, pois isso perderia campos não apresentados ao Owner.
 
+Templates portáteis v1 e v2 são aceitos. A v1 pode mostrar o nome curto da tabela na aba Colunas; a v2 mostra o caminho completo. Essa diferença de apresentação não exige refazer planilhas já preenchidas. Identificadores, hashes e demais campos protegidos continuam sendo conferidos.
+
 ## Privacidade
 
 - Uploads, fontes, planilhas, YAMLs gerados e ZIPs são processados **em memória**. O app não os grava em disco, banco de dados ou serviço externo.
@@ -92,7 +94,7 @@ $env:METADATA_SAMPLE_YAML = 'C:\caminho\para\seu\exemplo.yaml'
 
 A suíte cobre os dois fluxos, planilha independente da sessão, formatos e integridade, células vazias, exclusões explícitas, fórmulas com indicação de célula, preservação estrutural, ZIPs, ausência de escrita em disco e limpeza de sessão. A verificação real compara o contrato inteiro e testa alterações pontuais e entrada compactada, sempre em RAM.
 
-Verificação em 23/10/2026: **102 testes aprovados**, incluindo três testes com o YAML externo fornecido (ida e volta integral, alterações pontuais e entrada ZIP). Nenhum arquivo corporativo ou resultado desses testes foi salvo no projeto.
+Verificação em 23/10/2026: **108 testes aprovados**, incluindo compatibilidade dos templates, três testes com o YAML externo fornecido (ida e volta integral, alterações pontuais e entrada ZIP) e verificação em memória de uma planilha preenchida. Nenhum arquivo corporativo ou resultado desses testes foi salvo no projeto.
 
 ## Arquivos principais
 
