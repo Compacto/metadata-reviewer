@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pytest
 
 from app import engine, rules
-from app.excel import export_workbook, preview_workbook
+from app.owner_workbook import build_owner_workbook, read_owner_workbook
 
 
 SAFE = "table: {id: 'catalogo_teste.gold.objeto_teste', description: 'Somente teste', tags: {fl_mask: 'false'}}\n"
@@ -42,9 +42,10 @@ def test_complete_processing_never_opens_disk_files_or_temporary_storage():
         batch = engine.parse_batch([packed])
         assert not batch.errors
         issues = rules.validate_nodes(batch.nodes)
-        workbook = export_workbook(batch.nodes, {}, issues)
-        preview = preview_workbook(workbook, batch.nodes, {})
-        assert not preview["rejected"]
+        workbook = build_owner_workbook([packed], batch.nodes, issues)
+        preview = read_owner_workbook(workbook)
+        assert not preview["edits"]
+        assert preview["files"] == [packed]
         report = engine.apply_edits(batch, [{"id": batch.nodes[0]["id"], "field": "description", "value": "Texto revisado de teste"}])
         result = engine.render_yaml_zip(batch, report)
         assert isinstance(workbook, bytes) and isinstance(result, bytes)

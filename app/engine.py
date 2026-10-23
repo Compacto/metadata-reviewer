@@ -16,6 +16,7 @@ import os
 import stat
 import time
 import zipfile
+import zlib
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import PurePosixPath
@@ -106,6 +107,7 @@ class Batch:
     duplicates: list[dict] = field(default_factory=list)
     file_count: int = 0
     processed_count: int = 0
+    graph_count: int = 0
     _bindings: dict = field(default_factory=dict, repr=False)
     _blocked_ids: set = field(default_factory=set, repr=False)
 
@@ -391,6 +393,8 @@ def parse_batch(files: list[dict], references: dict | None = None) -> Batch:
                         add(f"{PurePosixPath(name).stem}/{entry}", archive.read(info))
             else:
                 raise ValueError("Formato não suportado; envie .yaml, .yml ou .zip.")
+        except zlib.error:
+            error(name, "Conteúdo ZIP corrompido; envie um novo arquivo compactado.")
         except (ValueError, binascii.Error, zipfile.BadZipFile, RuntimeError, OSError) as exc:
             error(name, str(exc))
     batch.file_count = len(expanded)
@@ -404,6 +408,7 @@ def parse_batch(files: list[dict], references: dict | None = None) -> Batch:
             extracted = _extract(batch, document, deadline)
             batch.documents.append(document)
             graph_remaining = candidate_budget[0]
+            batch.graph_count = MAX_NODES - graph_remaining
             batch.processed_count += 1
             for node, mapping in extracted:
                 if node["id"] in seen:
