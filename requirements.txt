@@ -1,0 +1,6 @@
+# 1.50 uses Tornado in-memory upload parsing. Later Starlette transport may spool to disk.
+streamlit==1.50.0
+ruamel.yaml>=0.18,<0.19
+XlsxWriter>=3.2,<4
+openpyxl>=3.1,<4
+defusedxml>=0.7,<1

@@ -1,0 +1,26 @@
+[server]
+address = "127.0.0.1"
+port = 8501
+headless = true
+runOnSave = false
+fileWatcherType = "none"
+maxUploadSize = 10
+maxMessageSize = 40
+enableCORS = true
+enableXsrfProtection = true
+disconnectedSessionTTL = 0
+
+[browser]
+gatherUsageStats = false
+
+[client]
+showErrorDetails = "none"
+toolbarMode = "minimal"
+
+[theme]
+base = "light"
+primaryColor = "#087F8C"
+backgroundColor = "#F6F8FC"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#172B4D"
+font = "sans serif"
