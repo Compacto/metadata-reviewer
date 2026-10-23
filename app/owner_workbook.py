@@ -31,8 +31,9 @@ LIST_SHEET = "_listas"
 HEADER_ROW = 3  # Índice zero: cabeçalho na linha 4 do Excel.
 DELETE_TOKEN = "[REMOVER]"
 LEGACY_VERSION = "metadata-reviewer-owner-v1"
-VERSION = "metadata-reviewer-owner-v2"
-SUPPORTED_VERSIONS = frozenset((LEGACY_VERSION, VERSION))
+PREVIOUS_VERSION = "metadata-reviewer-owner-v2"
+VERSION = "metadata-reviewer-owner-v3"
+SUPPORTED_VERSIONS = frozenset((LEGACY_VERSION, PREVIOUS_VERSION, VERSION))
 MAX_XLSX_BYTES = 30 * 1024 * 1024
 MAX_XML_BYTES = 160 * 1024 * 1024
 MAX_PAYLOAD_BYTES = engine.MAX_BATCH_BYTES * 4 // 3 + 1024 * 1024
@@ -111,7 +112,7 @@ def _allowed(rule):
     return "Texto livre; tag sem regra documentada. Confirmar com a governança."
 
 
-def _tables(nodes):
+def _tables(nodes, include_column_tags=True):
     """The same deterministic schema drives authoring and independent validation."""
     catalog = rules.get_catalog()
     extra_column_tags = sorted({tag for node in nodes if node["level"] == "Column"
@@ -170,6 +171,14 @@ def _tables(nodes):
             values.extend([""] + origin)
             tables["Colunas"]["rows"].append({"key": nid, "node": node,
                 "values": list(map(_cell_text, values)), "editable": editable})
+            if include_column_tags:
+                for tag, value in tags.items():
+                    rule = catalog["Column"].get(tag, {})
+                    values = [LEVEL_NAMES[level], node["path"], TAG_LABELS.get(tag, "Tag: " + tag),
+                              rule.get("description", "Tag existente sem significado documentado. Confirmar com a governança."),
+                              _tag_text(value, rule), "", _allowed(rule), "", tag] + origin
+                    tables["Tags"]["rows"].append({"key": (nid, tag), "node": node, "tag": tag,
+                        "values": list(map(_cell_text, values)), "editable": {5: ("tags", tag), 7: ("note", tag)}})
     for table in tables.values():
         if len(table["rows"]) > MAX_ROWS - HEADER_ROW - 1:
             raise ValueError("Há linhas em excesso; divida o lote em planilhas menores.")
@@ -203,7 +212,9 @@ def _guide(book, styles, nodes, issues):
     ws.set_column(2, 5, 24)
     lines = [
         ("Revisão de metadados", "title", 34),
-        ("1. Leia Objetos e Colunas. Confira os nomes e as descrições. Use Tags para as informações de governança dos objetos.", "hint", 45),
+        ("1. Leia Objetos e Colunas. Confira os nomes e as descrições. Use Tags para as informações de governança de todos os níveis, inclusive as colunas.", "hint", 45),
+        ("Na aba Tags, filtre Tipo de objeto = Coluna para revisar as tags colunares. O campo Objeto mostra o caminho completo, com a tabela e a coluna.", "hint", 45),
+        ("Uma tag de coluna pode ser proposta em Tags ou Colunas. Se preencher nas duas abas, informe o mesmo valor. Propostas diferentes precisam ser corrigidas antes da conversão.", "hint", 50),
         ("2. Escreva somente nos campos amarelos (propostas) e azuis (comentários). Use os filtros para localizar a tabela ou coluna desejada.", "hint", 45),
         ("3. Salve este Excel em .xlsx e envie à governança. Ela carregará apenas este arquivo na aba Excel → YAML do aplicativo.", "hint", 45),
         ("Célula proposta em branco = manter o valor original. Para excluir um valor existente, escreva exatamente [REMOVER]. Os nomes técnicos e tipos de dados ficam protegidos.", "hint", 55),
@@ -263,7 +274,7 @@ def build_owner_workbook(files: list[dict], nodes: list[dict], issues: list[dict
     """
     batch = _source(files)
     nodes = batch.nodes
-    tables = _tables(nodes)
+    tables = _tables(nodes, include_column_tags=VERSION not in (LEGACY_VERSION, PREVIOUS_VERSION))
     output = BytesIO()
     with xlsxwriter.Workbook(output, {"in_memory": True, "strings_to_formulas": False,
                                      "strings_to_urls": False}) as book:
@@ -482,8 +493,10 @@ def read_owner_workbook(content: bytes) -> dict:
         files = _payload(book)
         source_version = json.loads(book[PAYLOAD_SHEET].cell(1, 1).value)["version"]
         batch = _source(files)
-        tables = _tables(batch.nodes)
+        tables = _tables(batch.nodes, include_column_tags=source_version not in (LEGACY_VERSION, PREVIOUS_VERSION))
         edits, notes, warnings = [], [], []
+        proposals = {}
+        nodes_by_id = {node["id"]: node for node in batch.nodes}
         catalog = rules.get_catalog()
         # Original validation is advisory; it must never block a blank proposal.
         warnings.extend({**issue, "source": "original"} for issue in rules.validate_nodes(batch.nodes))
@@ -554,16 +567,30 @@ def read_owner_workbook(content: bytes) -> dict:
                             raise ValueError(location + ", " + TAG_LABELS.get(tag, tag) + ": " + errors[0]["message"])
                         warnings.extend({"id": node["id"], "path": node["path"], **issue,
                                          "source": "proposal"} for issue in tag_issues)
-                    old = node["tags"].get(tag) if field == "tags" else node.get(field)
-                    # Explicit text may intentionally repair a native boolean.
-                    if type(old) is type(value) and old == value and not (field == "tags" and tag in node.get("_native_tag_types", {})):
-                        continue
                     edit = {"id": node["id"], "field": field, "value": value}
                     if tag is not None:
                         edit["tag"] = tag
-                    edits.append(edit)
+                    key = (node["id"], field, tag)
+                    cell_location = f"{name}!{cell.coordinate}"
+                    previous = proposals.get(key)
+                    if previous is not None and previous[0]["value"] != value:
+                        raise ValueError(
+                            f"Propostas diferentes para a mesma informação em {previous[1]} e {cell_location}. "
+                            "Preencha somente uma das abas ou use o mesmo valor nas duas."
+                        )
+                    proposals.setdefault(key, (edit, cell_location))
             if seen != set(expected):
                 raise ValueError(f"{name}: faltam registros da origem; não exclua linhas do modelo.")
+        for edit, _location in proposals.values():
+            node = nodes_by_id[edit["id"]]
+            field, tag, value = edit["field"], edit.get("tag"), edit["value"]
+            old = node["tags"].get(tag) if field == "tags" else node.get(field)
+            # Compare only after duplicate proposals are checked, including an
+            # explicit original value versus a changed value in the other tab.
+            if (value is not None and type(old) is type(value) and old == value
+                    and not (field == "tags" and tag in node.get("_native_tag_types", {}))):
+                continue
+            edits.append(edit)
         return {"files": files, "edits": edits, "notes": notes, "warnings": warnings}
     finally:
         book.close()

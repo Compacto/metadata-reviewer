@@ -32,9 +32,11 @@ O Owner abre o Excel, revisa os campos atuais, preenche as alterações desejada
 | **Comece aqui** | Guia curto, significado das cores e instruções de preenchimento |
 | **Objetos** | Descrições e nomes de negócio |
 | **Colunas** | Descrições e informações de privacidade, classificação e mascaramento |
-| **Tags** | Informações de governança com explicações em linguagem simples |
+| **Tags** | Tags de objetos e colunas, com explicações em linguagem simples |
 
 **Amarelo** indica proposta de alteração; **azul**, comentário opcional. Os campos atuais são protegidos. Uma proposta em branco mantém o valor original. Para uma remoção explícita, escreva `[REMOVER]`. Listas booleanas usam **Sim/Não**, convertidos para os textos `true`/`false` no YAML. Cabeçalhos e identificadores permanecem congelados, e filtros ajudam a localizar objetos e colunas.
+
+Na aba **Tags**, filtre **Tipo de objeto = Coluna** para revisar as tags colunares. **Objeto** mostra o caminho completo com a tabela e a coluna. São incluídas todas as tags existentes em cada coluna, com as regras do nível Column do PDF. Nenhum valor ausente é inventado. As mesmas tags continuam disponíveis na aba **Colunas**: preencha a proposta em apenas uma aba ou use o mesmo valor nas duas. Propostas diferentes são recusadas com indicação das células em conflito.
 
 Na segunda aba, Governança envia **somente o Excel** e clica em **Gerar YAMLs**. É possível converter mais de um Excel por vez, desde que não tragam versões repetidas dos mesmos objetos. O ZIP contém somente arquivos YAML/YML; se houver um arquivo, também há download individual. O analista confere os arquivos e faz o deploy por seus próprios meios.
 
@@ -54,7 +56,7 @@ Essa aba evita alterações acidentais; **não é criptografia nem assinatura di
 
 Excels da versão anterior sem as origens incorporadas devem ser gerados novamente pela primeira aba. Não se reconstrói um contrato somente a partir das células visíveis, pois isso perderia campos não apresentados ao Owner.
 
-Templates portáteis v1 e v2 são aceitos. A v1 pode mostrar o nome curto da tabela na aba Colunas; a v2 mostra o caminho completo. Essa diferença de apresentação não exige refazer planilhas já preenchidas. Identificadores, hashes e demais campos protegidos continuam sendo conferidos.
+Templates portáteis v1, v2 e v3 são aceitos. A v1 pode mostrar o nome curto da tabela na aba Colunas; a v2 mostra o caminho completo; a v3 também inclui as tags colunares na aba Tags. Planilhas antigas já preenchidas continuam sendo importadas. Para obter as novas linhas de tags de coluna, gere um novo Excel pela primeira aba. Identificadores, hashes e demais campos protegidos continuam sendo conferidos.
 
 ## Privacidade
 
@@ -94,7 +96,7 @@ $env:METADATA_SAMPLE_YAML = 'C:\caminho\para\seu\exemplo.yaml'
 
 A suíte cobre os dois fluxos, planilha independente da sessão, formatos e integridade, células vazias, exclusões explícitas, fórmulas com indicação de célula, preservação estrutural, ZIPs, ausência de escrita em disco e limpeza de sessão. A verificação real compara o contrato inteiro e testa alterações pontuais e entrada compactada, sempre em RAM.
 
-Verificação em 23/10/2026: **108 testes aprovados**, incluindo compatibilidade dos templates, três testes com o YAML externo fornecido (ida e volta integral, alterações pontuais e entrada ZIP) e verificação em memória de uma planilha preenchida. Nenhum arquivo corporativo ou resultado desses testes foi salvo no projeto.
+Verificação em 23/10/2026: **131 testes aprovados**, incluindo compatibilidade dos templates, conflitos entre propostas e cinco testes com o YAML externo fornecido (ida e volta integral, alterações pontuais, entrada ZIP, cobertura das tags colunares e alteração de uma tag na coluna correta). Uma planilha preenchida também foi verificada em memória. Nenhum arquivo corporativo ou resultado desses testes foi salvo no projeto.
 
 ## Arquivos principais
 

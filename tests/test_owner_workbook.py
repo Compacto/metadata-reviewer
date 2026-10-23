@@ -178,8 +178,8 @@ def test_proposals_start_blank_and_only_existing_tag_cells_are_editable():
         assert ws.cell(row, existing).protection.locked is False
         assert ws.cell(row, absent).protection.locked is True
         assert ws.cell(row, existing).fill.fgColor.rgb == "FFFFF2C6"
-        # Column tags appear only on Colunas, not on the object Tags sheet.
-        assert all(row[0].value != "Coluna" for row in book["Tags"].iter_rows(min_row=5))
+        # The Owner can now find column tags in Tags as well as in Colunas.
+        assert any(row[0].value == "Coluna" for row in book["Tags"].iter_rows(min_row=5))
     finally:
         book.close()
 

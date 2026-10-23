@@ -8,11 +8,14 @@ from __future__ import annotations
 from copy import deepcopy
 import os
 from pathlib import Path
+from io import BytesIO
 
+import openpyxl
 import pytest
 
 from app import service
 from app.engine import parse_batch
+from app.owner_workbook import HEADER_ROW
 from test_conversion import (
     assert_same_documents,
     convert,
@@ -89,3 +92,37 @@ def test_real_sample_inside_zip_roundtrips_without_original_upload(real_sample):
     assert set(updated) == {f"lote_exemplo/contratos/{real_sample['name']}"}
     assert_same_documents(files, updated)
     assert result["changes"] == []
+
+
+def test_real_sample_all_existing_column_tags_are_listed_in_tags(real_sample):
+    files = [upload(real_sample["raw"], real_sample["name"])]
+    original = parse_batch(files)
+    expected = {(n["path"], tag) for n in original.nodes if n["level"] == "Column" for tag in n["tags"]}
+    content = service.create_owner_excel(files)["content"]
+    book = openpyxl.load_workbook(BytesIO(content), read_only=True)
+    try:
+        sheet = book["Tags"]
+        headers = [c.value for c in sheet[HEADER_ROW + 1]]
+        scope, path, tag = map(headers.index, ("Tipo de objeto", "Objeto", "Tag técnica"))
+        actual = {(r[path], r[tag]) for r in sheet.iter_rows(min_row=HEADER_ROW + 2, values_only=True) if r[scope] == "Coluna"}
+        assert actual == expected
+    finally:
+        book.close()
+
+
+def test_real_sample_column_tag_edit_from_tags_applies_only_to_that_column(real_sample):
+    files = [upload(real_sample["raw"], real_sample["name"])]
+    before = parse_batch(files)
+    column = next(n for n in before.nodes if n["level"] == "Column" and "fl_metadata_ai_generate" in n["tags"])
+    tag = "fl_metadata_ai_generate"
+    value = "false" if column["tags"][tag] == "true" else "true"
+    content = service.create_owner_excel(files)["content"]
+    revised = edit_owner_field(content, sheet="Tags", name=column["path"], field="tags", tag=tag,
+                               value="Sim" if value == "true" else "Não")
+    result = convert(revised)
+    after = parse_batch([upload(raw, name) for name, raw in output_files(result).items()])
+    expected = {n["id"]: dict(n["tags"]) for n in before.nodes}
+    expected[column["id"]][tag] = value
+    assert {n["id"]: n["tags"] for n in after.nodes} == expected
+    assert len(result["changes"]) == 1
+    assert result["changes"][0]["id"] == column["id"]
